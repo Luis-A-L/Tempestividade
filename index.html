@@ -14,6 +14,11 @@
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore-compat.js"></script>
     
+    <!-- Chart.js e SheetJS (para gráficos e Excel) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-chartjs-2/dist/react-chartjs-2.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
     <style>
         body {
             font-family: Inter, sans-serif;
@@ -47,6 +52,7 @@
         const db = app ? firebase.firestore() : null;
 
         const { useState, useEffect, useCallback, createContext, useContext } = React;
+        const { Bar, Doughnut } = ReactChartjs2;
 
         // --- Contexto de Autenticação ---
         const AuthContext = createContext(null);
@@ -279,9 +285,28 @@
             const [isLogin, setIsLogin] = useState(true);
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
+            const [rememberMe, setRememberMe] = useState(true);
+            const [isResettingPassword, setIsResettingPassword] = useState(false);
             const [error, setError] = useState('');
             const [message, setMessage] = useState('');
 
+            const handlePasswordReset = async (e) => {
+                e.preventDefault();
+                setError('');
+                setMessage('');
+                if (!email) {
+                    setError('Por favor, insira o seu e-mail para redefinir a palavra-passe.');
+                    return;
+                }
+                try {
+                    await auth.sendPasswordResetEmail(email);
+                    setMessage('Link para redefinição de palavra-passe enviado para o seu e-mail. Verifique a sua caixa de entrada.');
+                    setIsResettingPassword(false);
+                } catch (err) {
+                     setError('Falha ao enviar e-mail. Verifique se o e-mail está correto e tente novamente.');
+                }
+            };
+            
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 setError('');
@@ -291,43 +316,82 @@
                     setError("Acesso permitido apenas para emails com domínio @tjpr.jus.br.");
                     return;
                 }
-
                 if (!auth) {
                     setError("Serviço de autenticação não disponível.");
                     return;
                 }
+                
                 try {
+                    await auth.setPersistence(rememberMe ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
                     if (isLogin) {
                         await auth.signInWithEmailAndPassword(email, password);
                     } else {
                         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                         await userCredential.user.sendEmailVerification();
-                        setMessage("Conta criada! Enviamos um link de verificação para o seu e-mail.");
+                        setMessage("Conta criada! Enviámos um link de verificação para o seu e-mail.");
                     }
                 } catch (err) {
-                    setError(err.message);
+                    switch (err.code) {
+                        case 'auth/email-already-in-use': setError('Este e-mail já está registado. Tente fazer login ou redefinir a sua palavra-passe.'); break;
+                        case 'auth/user-not-found': setError('Nenhuma conta encontrada com este e-mail. Verifique o e-mail ou crie uma nova conta.'); break;
+                        case 'auth/wrong-password': setError('Palavra-passe incorreta. Tente novamente ou redefina a sua palavra-passe.'); break;
+                        case 'auth/weak-password': setError('A palavra-passe deve ter pelo menos 6 caracteres.'); break;
+                        case 'auth/invalid-email': setError('O formato do e-mail é inválido.'); break;
+                        default: setError('Ocorreu um erro. Tente novamente.'); console.error("Erro de autenticação:", err);
+                    }
                 }
             };
 
+            if (isResettingPassword) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900 relative">
+                        <div className="w-full max-w-md p-8 space-y-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-lg">
+                            <h2 className="text-3xl font-bold text-center text-slate-800 dark:text-slate-100">Redefinir Palavra-passe</h2>
+                            <p className="text-center text-sm text-slate-500 dark:text-slate-400">Insira o seu e-mail para receber um link de redefinição.</p>
+                            <form onSubmit={handlePasswordReset} className="space-y-6">
+                                <input type="email" placeholder="Email (@tjpr.jus.br)" value={email} onChange={e => setEmail(e.target.value)} required className="w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                                <button type="submit" className="w-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 shadow-md">Enviar Link</button>
+                            </form>
+                            {error && <p className="text-sm text-center text-red-500">{error}</p>}
+                            {message && <p className="text-sm text-center text-green-500">{message}</p>}
+                            <p className="text-center text-sm">
+                                <a href="#" onClick={(e) => { e.preventDefault(); setIsResettingPassword(false); setError(''); }} className="font-medium text-indigo-600 hover:text-indigo-500">Voltar para o Login</a>
+                            </p>
+                        </div>
+                        <CreditsWatermark />
+                    </div>
+                );
+            }
+
             return (
-                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900 relative">
                     <div className="w-full max-w-md p-8 space-y-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-lg">
                         <h2 className="text-3xl font-bold text-center text-slate-800 dark:text-slate-100">{isLogin ? 'Login' : 'Criar Conta'}</h2>
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form onSubmit={handleSubmit} className="space-y-4">
                             <input type="email" placeholder="Email (@tjpr.jus.br)" value={email} onChange={e => setEmail(e.target.value)} required className="w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                             <input type="password" placeholder="Palavra-passe" value={password} onChange={e => setPassword(e.target.value)} required className="w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                            
+                            <div className="flex items-center justify-between text-sm">
+                                <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                                    <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"/>
+                                    Lembrar-me
+                                </label>
+                                <a href="#" onClick={(e) => { e.preventDefault(); setIsResettingPassword(true); setError(''); }} className="font-medium text-indigo-600 hover:text-indigo-500">Esqueceu a sua palavra-passe?</a>
+                            </div>
+
                             <button type="submit" className="w-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 shadow-md">
                                 {isLogin ? 'Entrar' : 'Registar'}
                             </button>
                         </form>
-                        {error && <p className="text-sm text-center text-red-500">{error}</p>}
-                        {message && <p className="text-sm text-center text-green-500">{message}</p>}
-                        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+                        {error && <p className="text-sm text-center text-red-500 pt-2">{error}</p>}
+                        {message && <p className="text-sm text-center text-green-500 pt-2">{message}</p>}
+                        <p className="text-center text-sm text-slate-500 dark:text-slate-400 pt-2">
                             <a href="#" onClick={(e) => { e.preventDefault(); setIsLogin(!isLogin); setError(''); }} className="font-medium text-indigo-600 hover:text-indigo-500">
                                 {isLogin ? 'Não tem uma conta? Crie uma aqui.' : 'Já tem uma conta? Faça login.'}
                             </a>
                         </p>
                     </div>
+                     <CreditsWatermark />
                 </div>
             )
         };
@@ -350,7 +414,7 @@
             };
             
             return (
-                 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900 relative">
                     <div className="w-full max-w-md p-8 space-y-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-lg text-center">
                         <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Verifique o seu E-mail</h2>
                         <p className="text-slate-600 dark:text-slate-300">
@@ -368,59 +432,119 @@
                          {message && <p className="text-sm text-center text-green-500">{message}</p>}
                          {error && <p className="text-sm text-center text-red-500">{error}</p>}
                     </div>
+                    <CreditsWatermark />
                 </div>
             )
         };
         
         const AdminPage = () => {
-             const [stats, setStats] = useState(null);
+             const [stats, setStats] = useState({ total: 0, perMateria: {}, perPrazo: {}, recent: [] });
+             const [filteredData, setFilteredData] = useState([]);
              const [loading, setLoading] = useState(true);
+             const [filters, setFilters] = useState({ startDate: '', endDate: '', email: '', materia: 'todos' });
 
-             useEffect(() => {
-                if(db) {
-                    db.collection('usageStats').orderBy('timestamp', 'desc').limit(100).get()
-                        .then(snapshot => {
-                            const usageData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-                            const summary = {
-                                total: usageData.length,
-                                perMateria: usageData.reduce((acc, curr) => { acc[curr.materia] = (acc[curr.materia] || 0) + 1; return acc; }, {}),
-                                perPrazo: usageData.reduce((acc, curr) => { acc[curr.prazo] = (acc[curr.prazo] || 0) + 1; return acc; }, {}),
-                                recent: usageData.slice(0, 10)
-                            };
-                            setStats(summary);
-                            setLoading(false);
-                        })
-                        .catch(err => { console.error(err); setLoading(false); });
-                }
-             }, []);
+             const fetchData = useCallback(() => {
+                if (!db) return;
+                setLoading(true);
+                let query = db.collection('usageStats').orderBy('timestamp', 'desc');
+                
+                if(filters.startDate) query = query.where('timestamp', '>=', new Date(filters.startDate + 'T00:00:00'));
+                if(filters.endDate) query = query.where('timestamp', '<=', new Date(filters.endDate + 'T23:59:59'));
+                if(filters.materia !== 'todos') query = query.where('materia', '==', filters.materia);
+                
+                query.get()
+                    .then(snapshot => {
+                        let usageData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                        
+                        if(filters.email) {
+                            usageData = usageData.filter(item => item.userEmail.includes(filters.email.toLowerCase()));
+                        }
 
-             if(loading) return <p>A carregar estatísticas...</p>
+                        setFilteredData(usageData);
+
+                        const summary = {
+                            total: usageData.length,
+                            perMateria: usageData.reduce((acc, curr) => { acc[curr.materia] = (acc[curr.materia] || 0) + 1; return acc; }, {}),
+                            perPrazo: usageData.reduce((acc, curr) => { acc[curr.prazo] = (acc[curr.prazo] || 0) + 1; return acc; }, {}),
+                            recent: usageData.slice(0, 10),
+                            byDay: usageData.reduce((acc, curr) => {
+                                const date = curr.timestamp.toDate().toLocaleDateString('pt-BR');
+                                acc[date] = (acc[date] || 0) + 1;
+                                return acc;
+                            },{})
+                        };
+                        setStats(summary);
+                        setLoading(false);
+                    })
+                    .catch(err => { console.error(err); setLoading(false); });
+            }, [filters]);
+
+            useEffect(() => {
+                fetchData();
+            }, [fetchData]);
+
+            const handleFilterChange = (e) => {
+                setFilters({...filters, [e.target.name]: e.target.value });
+            };
+            
+            const handleExport = () => {
+                const dataToExport = filteredData.map(item => ({
+                    'Utilizador': item.userEmail,
+                    'Matéria': item.materia,
+                    'Prazo (dias)': item.prazo,
+                    'Data': item.timestamp?.toDate().toLocaleString('pt-BR')
+                }));
+                const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "RelatorioCalculos");
+                XLSX.writeFile(workbook, "relatorio_calculadora_prazos.xlsx");
+            };
+
+            const chartDataMateria = {
+                labels: ['Cível', 'Crime'],
+                datasets: [{ data: [stats.perMateria.civel || 0, stats.perMateria.crime || 0], backgroundColor: ['#6366F1', '#F59E0B'], hoverBackgroundColor: ['#4F46E5', '#D97706'] }]
+            };
+             const chartDataPrazo = {
+                labels: ['5 Dias', '15 Dias'],
+                datasets: [{ data: [stats.perPrazo[5] || 0, stats.perPrazo[15] || 0], backgroundColor: ['#10B981', '#3B82F6'], hoverBackgroundColor: ['#059669', '#2563EB'] }]
+            };
+             const chartDataByDay = {
+                labels: Object.keys(stats.byDay || {}).reverse(),
+                datasets: [{ label: 'Cálculos por Dia', data: Object.values(stats.byDay || {}).reverse(), backgroundColor: 'rgba(79, 70, 229, 0.8)' }]
+            };
+            const chartOptions = { plugins: { legend: { display: false } } };
+
+            if(loading) return <p>A carregar estatísticas...</p>
 
              return(
-                 <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-8 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50">
-                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-6">Estatísticas de Uso</h2>
+                 <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-8 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 space-y-8">
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Painel Administrativo</h2>
                     
-                    {stats ? (
-                        <div className="space-y-6">
-                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-lg"><p className="text-sm text-slate-500 dark:text-slate-400">Total de Cálculos</p><p className="text-3xl font-bold">{stats.total}</p></div>
-                                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-lg"><p className="text-sm text-slate-500 dark:text-slate-400">Cálculos Cíveis</p><p className="text-3xl font-bold">{stats.perMateria.civel || 0}</p></div>
-                                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-lg"><p className="text-sm text-slate-500 dark:text-slate-400">Cálculos Criminais</p><p className="text-3xl font-bold">{stats.perMateria.crime || 0}</p></div>
+                    <div className="p-4 bg-slate-100/70 dark:bg-slate-900/50 rounded-lg">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                            <div className="md:col-span-2 grid grid-cols-2 gap-2">
+                                <div><label className="text-xs">Data Inicial</label><input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full mt-1 p-2 text-sm rounded-md bg-white/50 dark:bg-slate-800/50"/></div>
+                                <div><label className="text-xs">Data Final</label><input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full mt-1 p-2 text-sm rounded-md bg-white/50 dark:bg-slate-800/50"/></div>
                             </div>
-                            <div>
-                                <h3 className="text-lg font-semibold mb-2">Cálculos Recentes</h3>
-                                <ul className="text-sm space-y-2">
-                                {stats.recent.map(item => (
-                                    <li key={item.id} className="p-2 bg-slate-50 dark:bg-slate-900/30 rounded-md flex justify-between">
-                                        <span>{item.userEmail}</span>
-                                        <span>{item.materia} / {item.prazo} dias</span>
-                                        <span className="text-slate-400">{item.timestamp?.toDate().toLocaleString('pt-BR')}</span>
-                                    </li>
-                                ))}
-                                </ul>
-                            </div>
+                            <div><label className="text-xs">Email do Utilizador</label><input type="text" name="email" value={filters.email} onChange={handleFilterChange} placeholder="Filtrar por email" className="w-full mt-1 p-2 text-sm rounded-md bg-white/50 dark:bg-slate-800/50"/></div>
+                            <div><label className="text-xs">Matéria</label><select name="materia" value={filters.materia} onChange={handleFilterChange} className="w-full mt-1 p-2 text-sm rounded-md bg-white/50 dark:bg-slate-800/50"><option value="todos">Todas</option><option value="civel">Cível</option><option value="crime">Crime</option></select></div>
                         </div>
-                    ) : <p>Não foram encontradas estatísticas.</p>}
+                         <div className="flex justify-end gap-2 mt-4">
+                             <button onClick={fetchData} className="px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Filtrar</button>
+                            <button onClick={handleExport} className="px-4 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700">Baixar Relatório (Excel)</button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                        <div className="md:col-span-3 p-4 bg-slate-100/70 dark:bg-slate-900/50 rounded-lg">
+                             <h3 className="font-semibold text-center mb-2">Uso por Dia</h3>
+                             <Bar data={chartDataByDay} options={{ responsive: true }}/>
+                        </div>
+                         <div className="md:col-span-2 grid grid-cols-2 gap-6">
+                            <div className="p-4 bg-slate-100/70 dark:bg-slate-900/50 rounded-lg"><h3 className="font-semibold text-center mb-2">Uso por Matéria</h3><Doughnut data={chartDataMateria} options={chartOptions}/></div>
+                            <div className="p-4 bg-slate-100/70 dark:bg-slate-900/50 rounded-lg"><h3 className="font-semibold text-center mb-2">Uso por Prazo</h3><Doughnut data={chartDataPrazo} options={chartOptions}/></div>
+                        </div>
+                    </div>
                 </div>
              );
         };
@@ -476,6 +600,25 @@
             </>
             )
         };
+        
+        const CreditsWatermark = () => (
+             <div className="fixed bottom-2 right-2 text-xs text-slate-400 dark:text-slate-600 z-50 text-right pointer-events-none">
+                <p>Desenvolvido por:</p>
+                <p>Elvertoni Martelli Coimbra</p>
+                <p><strong>Luís Gustavo Arruda Lançoni</strong></p>
+                <p>Narley Almeida de Souza</p>
+            </div>
+        );
+
+        const UserIDWatermark = () => {
+             const { user } = useAuth();
+             if (!user) return null;
+             return (
+                <div className="fixed bottom-2 left-2 text-xs text-slate-400 dark:text-slate-600 z-50 pointer-events-none">
+                    ID do Utilizador: {user.uid}
+                </div>
+            );
+        };
 
 
         // --- Componente Principal ---
@@ -497,14 +640,13 @@
           };
           
           return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900 text-slate-800 dark:text-slate-200 flex flex-col">
-                <Header />
-                {renderContent()}
-                <footer className="text-center py-4">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Desenvolvido por: <strong>Luís Gustavo Arruda Lançoni</strong>, Narley Almeida de Souza e Elvertoni Martelli Coimbra
-                    </p>
-                </footer>
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900 text-slate-800 dark:text-slate-200 flex flex-col relative">
+                {user && user.emailVerified && <Header />}
+                <div className="flex-grow">
+                  {renderContent()}
+                </div>
+                <UserIDWatermark />
+                <CreditsWatermark />
             </div>
           );
         };
