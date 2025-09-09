@@ -8,6 +8,12 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- SDKs do Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore-compat.js"></script>
+    
     <style>
         body {
             font-family: Inter, sans-serif;
@@ -18,6 +24,67 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        const firebaseConfig = {
+          apiKey: "AIzaSyAzgd2Zt-giAcns0sh1xzTP506vhW7AiDo",
+          authDomain: "djen-4a2fb.firebaseapp.com",
+          projectId: "djen-4a2fb",
+          storageBucket: "djen-4a2fb.appspot.com",
+          messagingSenderId: "928977146281",
+          appId: "1:928977146281:web:42f206788ec1d68c2b34b8",
+          measurementId: "G-LM8T5WZXNX"
+        };
+
+        // Inicializa o Firebase
+        let app;
+        try {
+            app = firebase.initializeApp(firebaseConfig);
+        } catch (e) {
+            console.error("Erro ao inicializar o Firebase:", e);
+        }
+        
+        const auth = app ? firebase.auth() : null;
+        const db = app ? firebase.firestore() : null;
+
+        const { useState, useEffect, useCallback, createContext, useContext } = React;
+
+        // --- Contexto de Autenticação ---
+        const AuthContext = createContext(null);
+
+        const AuthProvider = ({ children }) => {
+            const [user, setUser] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                if (!auth) {
+                    setLoading(false);
+                    return;
+                }
+                const unsubscribe = auth.onAuthStateChanged(async (user) => {
+                    if (user) {
+                        setUser(user);
+                        const userDoc = await db.collection('users').doc(user.uid).get();
+                        setIsAdmin(userDoc.exists && userDoc.data().isAdmin === true);
+                    } else {
+                        setUser(null);
+                        setIsAdmin(false);
+                    }
+                    setLoading(false);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const value = { user, isAdmin, loading };
+
+            return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+        };
+        
+        const useAuth = () => {
+            return useContext(AuthContext);
+        };
+
+
         // --- Componentes ---
 
         const ConsultaAssistidaPJE = () => {
@@ -25,16 +92,12 @@
 
             const handleConsulta = () => {
                 if (!numeroProcesso.trim()) return;
-
                 const numeroLimpo = numeroProcesso.replace(/\D/g, '');
                 const dataFim = new Date();
                 const dataInicio = new Date();
-                dataInicio.setFullYear(dataInicio.getFullYear() - 2); // Busca nos últimos 2 anos
-
+                dataInicio.setFullYear(dataInicio.getFullYear() - 2);
                 const formataData = (d) => d.toISOString().split('T')[0];
-
                 const url = `https://comunica.pje.jus.br/consulta?siglaTribunal=TJPR&dataDisponibilizacaoInicio=${formataData(dataInicio)}&dataDisponibilizacaoFim=${formataData(dataFim)}&numeroProcesso=${numeroLimpo}`;
-                
                 window.open(url, '_blank', 'noopener,noreferrer');
             };
 
@@ -42,83 +105,40 @@
                  <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-8 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50">
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-1">Consulta de Processo</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Insira o número para consultar o processo no Diário de Justiça do TJPR.</p>
-                    
                     <div className="flex items-center gap-2">
-                         <input
-                            type="text"
-                            value={numeroProcesso}
-                            onChange={(e) => setNumeroProcesso(e.target.value)}
-                            placeholder="Número do Processo (formato CNJ)"
-                            className="flex-grow w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                        />
-                         <button
-                            onClick={handleConsulta}
-                            disabled={!numeroProcesso}
-                            className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 px-5 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Consultar Processo
-                          </button>
+                         <input type="text" value={numeroProcesso} onChange={(e) => setNumeroProcesso(e.target.value)} placeholder="Número do Processo (formato CNJ)" className="flex-grow w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                         <button onClick={handleConsulta} disabled={!numeroProcesso} className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 px-5 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Consultar Processo</button>
                     </div>
-                     <p className="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
-                        Após a consulta, localize a "Data de Disponibilização" para usar na calculadora de prazos abaixo.
-                     </p>
+                     <p className="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">Após a consulta, localize a "Data de Disponibilização" para usar na calculadora de prazos abaixo.</p>
                 </div>
             );
         };
 
-
         const CalculadoraDePrazo = () => {
           const [dataDisponibilizacao, setDataDisponibilizacao] = useState('');
           const [prazoSelecionado, setPrazoSelecionado] = useState(15);
-          const [tipoPrazo, setTipoPrazo] = useState('civel'); // 'civel' ou 'crime'
+          const [tipoPrazo, setTipoPrazo] = useState('civel');
           const [resultado, setResultado] = useState(null);
           const [error, setError] = useState('');
+          const { user } = useAuth();
 
-          const feriadosMap = {
-            '2025-01-01': 'Confraternização Universal',
-            '2025-01-31': 'Instabilidade Projudi',
-            '2025-03-04': 'Carnaval',
-            '2025-04-18': 'Paixão de Cristo',
-            '2025-04-21': 'Tiradentes',
-            '2025-05-01': 'Dia do Trabalho',
-            '2025-10-28': 'Dia do Funcionário Público',
-            '2025-11-20': 'Consciência Negra',
-            '2025-12-08': 'Dia da Justiça',
-          };
-          const decretosMap = {
-              '2025-03-03': 'Véspera de Carnaval',
-              '2025-04-17': 'Quinta-feira Santa',
-              '2025-05-02': 'Decreto P-SEP',
-              '2025-06-19': 'Corpus Christi',
-              '2025-06-20': 'Feriado CNJ',
-              '2025-09-08': 'Padroeira de Curitiba',
-              '2025-10-27': 'Decreto nº127/2025',
-              '2025-11-21': 'Decreto Suspensão de expediente nº127/2025',
-              '2025-12-19': 'Decreto',
-              '2025-12-24': 'Decreto',
-              '2025-12-31': 'Decreto',
-          };
+          const feriadosMap = { '2025-01-01': 'Confraternização Universal', '2025-01-31': 'Instabilidade Projudi', '2025-03-04': 'Carnaval', '2025-04-18': 'Paixão de Cristo', '2025-04-21': 'Tiradentes', '2025-05-01': 'Dia do Trabalho', '2025-10-28': 'Dia do Funcionário Público', '2025-11-20': 'Consciência Negra', '2025-12-08': 'Dia da Justiça' };
+          const decretosMap = { '2025-03-03': 'Véspera de Carnaval', '2025-04-17': 'Quinta-feira Santa', '2025-05-02': 'Decreto P-SEP', '2025-06-19': 'Corpus Christi', '2025-06-20': 'Feriado CNJ', '2025-09-08': 'Padroeira de Curitiba', '2025-10-27': 'Decreto nº127/2025', '2025-11-21': 'Decreto Suspensão de expediente nº127/2025', '2025-12-19': 'Decreto', '2025-12-24': 'Decreto', '2025-12-31': 'Decreto' };
 
           const getMotivoDiaNaoUtil = (date, considerarDecretos) => {
             const dateString = date.toISOString().split('T')[0];
-            
             if (feriadosMap[dateString]) return feriadosMap[dateString];
             if (considerarDecretos && decretosMap[dateString]) return decretosMap[dateString];
-            
             const month = date.getMonth() + 1;
             const day = date.getDate();
-
-            if ((month === 1 && day >= 2 && day <= 20) || (month === 12 && day >= 20 && day <= 30)) {
-                return 'Recesso Forense';
-            }
+            if ((month === 1 && day >= 2 && day <= 20) || (month === 12 && day >= 20 && day <= 30)) return 'Recesso Forense';
             return null;
           };
           
           const getProximoDiaUtil = (data) => {
               const proximoDia = new Date(data.getTime());
-              do {
-                  proximoDia.setDate(proximoDia.getDate() + 1);
-              } while (proximoDia.getDay() === 0 || proximoDia.getDay() === 6 || getMotivoDiaNaoUtil(proximoDia, true));
+              do { proximoDia.setDate(proximoDia.getDate() + 1); } 
+              while (proximoDia.getDay() === 0 || proximoDia.getDay() === 6 || getMotivoDiaNaoUtil(proximoDia, true));
               return proximoDia;
           };
 
@@ -127,77 +147,60 @@
             const diasNaoUteisEncontrados = [];
             const dataCorrente = new Date(inicioDoPrazo.getTime());
             dataCorrente.setDate(dataCorrente.getDate() - 1);
-
             while (diasUteisContados < prazo) {
                 dataCorrente.setDate(dataCorrente.getDate() + 1);
                 const diaDaSemana = dataCorrente.getDay();
                 const motivoNaoUtil = getMotivoDiaNaoUtil(dataCorrente, considerarDecretos);
-
                 if (diaDaSemana !== 0 && diaDaSemana !== 6 && !motivoNaoUtil) {
                     diasUteisContados++;
                 } else if (motivoNaoUtil) {
-                    diasNaoUteisEncontrados.push({
-                        data: new Date(dataCorrente.getTime()),
-                        motivo: motivoNaoUtil
-                    });
+                    diasNaoUteisEncontrados.push({ data: new Date(dataCorrente.getTime()), motivo: motivoNaoUtil });
                 }
             }
             return { prazoFinal: dataCorrente, diasNaoUteis: diasNaoUteisEncontrados };
           };
 
+          const logUsage = () => {
+              if (db && user) {
+                  db.collection('usageStats').add({
+                      userId: user.uid,
+                      userEmail: user.email,
+                      materia: tipoPrazo,
+                      prazo: prazoSelecionado,
+                      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                  }).catch(err => console.error("Erro ao registar uso:", err));
+              }
+          }
+
           const handleCalcular = () => {
             setError('');
             setResultado(null);
-
             if (!dataDisponibilizacao) {
                 setError('Por favor, preencha a Data de Disponibilização.');
                 return;
             }
-
             try {
                 const inicioDisponibilizacao = new Date(dataDisponibilizacao + 'T00:00:00');
                 const prazoNumerico = prazoSelecionado;
-
                 if (tipoPrazo === 'civel') {
                     const dataPublicacao = getProximoDiaUtil(inicioDisponibilizacao);
                     const inicioDoPrazo = getProximoDiaUtil(dataPublicacao);
-
                     const resultadoComDecreto = calcularPrazoFinalDiasUteis(inicioDoPrazo, prazoNumerico, true);
                     const resultadoSemDecreto = calcularPrazoFinalDiasUteis(inicioDoPrazo, prazoNumerico, false);
                     const decretoImpactou = resultadoComDecreto.prazoFinal.getTime() !== resultadoSemDecreto.prazoFinal.getTime();
-
-                    setResultado({
-                        dataPublicacao,
-                        inicioPrazo: inicioDoPrazo,
-                        comDecreto: resultadoComDecreto,
-                        semDecreto: resultadoSemDecreto,
-                        decretoImpactou: decretoImpactou,
-                        prazo: prazoNumerico,
-                        tipo: 'civel'
-                    });
-                } else { // tipoPrazo === 'crime'
+                    setResultado({ dataPublicacao, inicioPrazo: inicioDoPrazo, comDecreto: resultadoComDecreto, semDecreto: resultadoSemDecreto, decretoImpactou: decretoImpactou, prazo: prazoNumerico, tipo: 'civel' });
+                } else { 
                     let inicioDoPrazo = new Date(inicioDisponibilizacao.getTime());
-                    const diaDaSemanaDisponibilizacao = inicioDisponibilizacao.getDay(); // 5 is Friday
-
-                    if (diaDaSemanaDisponibilizacao === 5) {
-                        // Disponibilização na Sexta -> intimação na Segunda -> início do prazo na Terça
+                    if (inicioDisponibilizacao.getDay() === 5) {
                         inicioDoPrazo.setDate(inicioDoPrazo.getDate() + 4);
                     } else {
-                        // "Conta corrido normal": Início do prazo é o dia seguinte à disponibilização
                         inicioDoPrazo.setDate(inicioDoPrazo.getDate() + 1);
                     }
-
                     const dataFinal = new Date(inicioDoPrazo.getTime());
                     dataFinal.setDate(dataFinal.getDate() + prazoNumerico - 1); 
-                    
-                    setResultado({
-                        prazoFinal: dataFinal,
-                        prazo: prazoNumerico,
-                        tipo: 'crime',
-                        inicioPrazo: inicioDoPrazo,
-                    });
+                    setResultado({ prazoFinal: dataFinal, prazo: prazoNumerico, tipo: 'crime', inicioPrazo: inicioDoPrazo });
                 }
-
+                logUsage();
             } catch(e) {
                 setError('Data inválida. Use o formato AAAA-MM-DD.');
             }
@@ -207,7 +210,6 @@
             <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-8 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50">
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-1">Calculadora de Prazo Final</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Calcule o prazo final considerando as regras de contagem para cada matéria.</p>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Matéria</label>
@@ -224,73 +226,45 @@
                     </div>
                   </div>
                 </div>
-
                 <div>
                     <label htmlFor="data-disponibilizacao" className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Data de Disponibilização</label>
                     <input type="date" id="data-disponibilizacao" value={dataDisponibilizacao} onChange={e => setDataDisponibilizacao(e.target.value)} className="w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
                 <div className="mt-4">
-                    <button onClick={handleCalcular} className="w-full flex justify-center items-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 shadow-md">
-                        Calcular Prazo Final
-                    </button>
+                    <button onClick={handleCalcular} className="w-full flex justify-center items-center bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 shadow-md">Calcular Prazo Final</button>
                 </div>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-3 text-center">* O cálculo considera o calendário de feriados e recessos do TJPR para 2025.</p>
-
                 {error && <p className="mt-4 text-sm text-amber-700 dark:text-amber-400 bg-amber-100/50 dark:bg-amber-900/30 p-3 rounded-lg">{error}</p>}
-                
                 {resultado && (
                     <div className="mt-6 p-4 border-t border-slate-200 dark:border-slate-700/50 animate-fade-in">
-                        {resultado.tipo === 'civel' && resultado.decretoImpactou && (
-                             <div className="p-4 mb-4 text-sm text-orange-800 rounded-lg bg-orange-50 dark:bg-gray-800 dark:text-orange-400" role="alert">
-                                <span className="font-medium">Atenção!</span> Foi identificado um decreto de suspensão de prazo no período. Verifique se o advogado juntou o decreto aos autos para comprovar a prorrogação.
-                            </div>
-                        )}
-
+                        {resultado.tipo === 'civel' && resultado.decretoImpactou && ( <div className="p-4 mb-4 text-sm text-orange-800 rounded-lg bg-orange-50 dark:bg-gray-800 dark:text-orange-400" role="alert"><span className="font-medium">Atenção!</span> Foi identificado um decreto de suspensão de prazo no período. Verifique se o advogado juntou o decreto aos autos para comprovar a prorrogação.</div> )}
                         {resultado.tipo === 'civel' ? (
                              <div className={`grid grid-cols-1 ${resultado.decretoImpactou ? 'md:grid-cols-2' : ''} gap-4`}>
                                 <div className={resultado.decretoImpactou ? 'border-r md:pr-4' : ''}>
                                     <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 text-center mb-2">{resultado.decretoImpactou ? "Cenário 1: Sem Decreto" : "Prazo Final"}</h3>
-                                     <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-1">
-                                        Publicação em {resultado.dataPublicacao.toLocaleDateString('pt-BR', {timeZone: 'UTC'})} / 
-                                        Início do prazo em {resultado.inicioPrazo.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}
-                                     </p>
+                                     <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-1">Publicação em {resultado.dataPublicacao.toLocaleDateString('pt-BR', {timeZone: 'UTC'})} / Início do prazo em {resultado.inicioPrazo.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
                                      <p className="text-center text-slate-600 dark:text-slate-300">O prazo final de {resultado.prazo} dias úteis é:</p>
                                      <p className="text-center mt-2 text-2xl font-bold text-indigo-600 dark:text-indigo-400">{resultado.semDecreto.prazoFinal.toLocaleDateString('pt-BR')}</p>
                                      {resultado.semDecreto.diasNaoUteis.length > 0 && (
-                                        <div className="mt-4 text-left">
-                                            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Dias não úteis considerados:</p>
-                                            <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                                                {resultado.semDecreto.diasNaoUteis.map((dia, i) => <li key={i}><strong>{dia.data.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}:</strong> {dia.motivo}</li>)}
-                                            </ul>
-                                        </div>
+                                        <div className="mt-4 text-left"><p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Dias não úteis considerados:</p><ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">{resultado.semDecreto.diasNaoUteis.map((dia, i) => <li key={i}><strong>{dia.data.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}:</strong> {dia.motivo}</li>)}</ul></div>
                                      )}
                                 </div>
                                 {resultado.decretoImpactou && (
                                     <div className="border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-700 md:pl-4 pt-4 md:pt-0">
                                        <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 text-center mb-2">Cenário 2: Com Decreto</h3>
-                                        <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-1">
-                                            Publicação em {resultado.dataPublicacao.toLocaleDateString('pt-BR', {timeZone: 'UTC'})} / 
-                                            Início do prazo em {resultado.inicioPrazo.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}
-                                        </p>
+                                        <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-1">Publicação em {resultado.dataPublicacao.toLocaleDateString('pt-BR', {timeZone: 'UTC'})} / Início do prazo em {resultado.inicioPrazo.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
                                         <p className="text-center text-slate-600 dark:text-slate-300">O prazo final de {resultado.prazo} dias úteis é:</p>
                                         <p className="text-center mt-2 text-2xl font-bold text-green-600 dark:text-green-400">{resultado.comDecreto.prazoFinal.toLocaleDateString('pt-BR')}</p>
                                         {resultado.comDecreto.diasNaoUteis.length > 0 && (
-                                        <div className="mt-4 text-left">
-                                            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Dias não úteis considerados:</p>
-                                            <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                                                {resultado.comDecreto.diasNaoUteis.map((dia, i) => <li key={i}><strong>{dia.data.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}:</strong> {dia.motivo}</li>)}
-                                            </ul>
-                                        </div>
+                                        <div className="mt-4 text-left"><p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Dias não úteis considerados:</p><ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1">{resultado.comDecreto.diasNaoUteis.map((dia, i) => <li key={i}><strong>{dia.data.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}:</strong> {dia.motivo}</li>)}</ul></div>
                                      )}
                                     </div>
                                 )}
                             </div>
-                        ) : ( // Resultado para 'crime'
+                        ) : ( 
                             <div className="text-center">
                                 <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 text-center mb-2">Prazo Final</h3>
-                                <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-1">
-                                    Início do prazo em {resultado.inicioPrazo.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}
-                                </p>
+                                <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-1">Início do prazo em {resultado.inicioPrazo.toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</p>
                                 <p className="text-center text-slate-600 dark:text-slate-300">O prazo final de {resultado.prazo} dias corridos é:</p>
                                 <p className="text-center mt-2 text-2xl font-bold text-indigo-600 dark:text-indigo-400">{resultado.prazoFinal.toLocaleDateString('pt-BR')}</p>
                             </div>
@@ -300,40 +274,247 @@
             </div>
           );
         };
+        
+        const LoginPage = () => {
+            const [isLogin, setIsLogin] = useState(true);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [message, setMessage] = useState('');
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setMessage('');
+
+                if (!email.toLowerCase().endsWith('@tjpr.jus.br')) {
+                    setError("Acesso permitido apenas para emails com domínio @tjpr.jus.br.");
+                    return;
+                }
+
+                if (!auth) {
+                    setError("Serviço de autenticação não disponível.");
+                    return;
+                }
+                try {
+                    if (isLogin) {
+                        await auth.signInWithEmailAndPassword(email, password);
+                    } else {
+                        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                        await userCredential.user.sendEmailVerification();
+                        setMessage("Conta criada! Enviamos um link de verificação para o seu e-mail.");
+                    }
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                    <div className="w-full max-w-md p-8 space-y-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-lg">
+                        <h2 className="text-3xl font-bold text-center text-slate-800 dark:text-slate-100">{isLogin ? 'Login' : 'Criar Conta'}</h2>
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <input type="email" placeholder="Email (@tjpr.jus.br)" value={email} onChange={e => setEmail(e.target.value)} required className="w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                            <input type="password" placeholder="Palavra-passe" value={password} onChange={e => setPassword(e.target.value)} required className="w-full px-4 py-3 bg-white/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                            <button type="submit" className="w-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 shadow-md">
+                                {isLogin ? 'Entrar' : 'Registar'}
+                            </button>
+                        </form>
+                        {error && <p className="text-sm text-center text-red-500">{error}</p>}
+                        {message && <p className="text-sm text-center text-green-500">{message}</p>}
+                        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+                            <a href="#" onClick={(e) => { e.preventDefault(); setIsLogin(!isLogin); setError(''); }} className="font-medium text-indigo-600 hover:text-indigo-500">
+                                {isLogin ? 'Não tem uma conta? Crie uma aqui.' : 'Já tem uma conta? Faça login.'}
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            )
+        };
+
+        const VerifyEmailPage = () => {
+            const { user } = useAuth();
+            const [message, setMessage] = useState('');
+            const [error, setError] = useState('');
+
+            const handleResend = async () => {
+                setMessage('');
+                setError('');
+                if (!user) return;
+                try {
+                    await user.sendEmailVerification();
+                    setMessage('Um novo e-mail de verificação foi enviado.');
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+            
+            return (
+                 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                    <div className="w-full max-w-md p-8 space-y-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-lg text-center">
+                        <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Verifique o seu E-mail</h2>
+                        <p className="text-slate-600 dark:text-slate-300">
+                            Enviámos um link de verificação para <strong>{user?.email}</strong>. Por favor, clique no link para ativar a sua conta.
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">(Se não encontrar, verifique a sua pasta de spam)</p>
+                        <div className="space-y-4">
+                            <button onClick={handleResend} className="w-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold py-3 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all duration-300 shadow-md">
+                                Reenviar E-mail
+                            </button>
+                            <button onClick={() => auth.signOut()} className="w-full bg-slate-200 text-slate-700 font-semibold py-3 rounded-lg hover:bg-slate-300 transition-all duration-300">
+                                Voltar para o Login
+                            </button>
+                        </div>
+                         {message && <p className="text-sm text-center text-green-500">{message}</p>}
+                         {error && <p className="text-sm text-center text-red-500">{error}</p>}
+                    </div>
+                </div>
+            )
+        };
+        
+        const AdminPage = () => {
+             const [stats, setStats] = useState(null);
+             const [loading, setLoading] = useState(true);
+
+             useEffect(() => {
+                if(db) {
+                    db.collection('usageStats').orderBy('timestamp', 'desc').limit(100).get()
+                        .then(snapshot => {
+                            const usageData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                            const summary = {
+                                total: usageData.length,
+                                perMateria: usageData.reduce((acc, curr) => { acc[curr.materia] = (acc[curr.materia] || 0) + 1; return acc; }, {}),
+                                perPrazo: usageData.reduce((acc, curr) => { acc[curr.prazo] = (acc[curr.prazo] || 0) + 1; return acc; }, {}),
+                                recent: usageData.slice(0, 10)
+                            };
+                            setStats(summary);
+                            setLoading(false);
+                        })
+                        .catch(err => { console.error(err); setLoading(false); });
+                }
+             }, []);
+
+             if(loading) return <p>A carregar estatísticas...</p>
+
+             return(
+                 <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-8 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50">
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-6">Estatísticas de Uso</h2>
+                    
+                    {stats ? (
+                        <div className="space-y-6">
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-lg"><p className="text-sm text-slate-500 dark:text-slate-400">Total de Cálculos</p><p className="text-3xl font-bold">{stats.total}</p></div>
+                                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-lg"><p className="text-sm text-slate-500 dark:text-slate-400">Cálculos Cíveis</p><p className="text-3xl font-bold">{stats.perMateria.civel || 0}</p></div>
+                                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-lg"><p className="text-sm text-slate-500 dark:text-slate-400">Cálculos Criminais</p><p className="text-3xl font-bold">{stats.perMateria.crime || 0}</p></div>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold mb-2">Cálculos Recentes</h3>
+                                <ul className="text-sm space-y-2">
+                                {stats.recent.map(item => (
+                                    <li key={item.id} className="p-2 bg-slate-50 dark:bg-slate-900/30 rounded-md flex justify-between">
+                                        <span>{item.userEmail}</span>
+                                        <span>{item.materia} / {item.prazo} dias</span>
+                                        <span className="text-slate-400">{item.timestamp?.toDate().toLocaleString('pt-BR')}</span>
+                                    </li>
+                                ))}
+                                </ul>
+                            </div>
+                        </div>
+                    ) : <p>Não foram encontradas estatísticas.</p>}
+                </div>
+             );
+        };
 
 
+        const Header = () => {
+            const { user } = useAuth();
+            return (
+            <header className="bg-white/30 dark:bg-slate-900/30 backdrop-blur-xl shadow-sm sticky top-0 z-10 border-b border-slate-200/50 dark:border-slate-700/50">
+                <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                        <svg className="h-9 w-9 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18-3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+                        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Calculadora de Prazos TJPR</h1>
+                    </div>
+                     {user && (
+                        <div className="flex items-center gap-4">
+                            <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">{user.email}</span>
+                            <button onClick={() => auth.signOut()} className="text-sm font-medium text-indigo-600 hover:text-indigo-500">Sair</button>
+                        </div>
+                    )}
+                </div>
+            </header>
+            );
+        };
 
-        const Header = () => (<header className="bg-white/30 dark:bg-slate-900/30 backdrop-blur-xl shadow-sm sticky top-0 z-10 border-b border-slate-200/50 dark:border-slate-700/50"><div className="container mx-auto px-4 py-4"><div className="flex items-center gap-4"><svg className="h-9 w-9 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18-3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg><h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Calculadora de Prazos TJPR</h1></div></div></header>);
+        const CalculatorApp = () => {
+            const [currentArea, setCurrentArea] = useState('Calculadora');
+            const { isAdmin } = useAuth();
+
+            return(
+            <>
+                <nav className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border-b border-slate-200/50 dark:border-slate-700/50">
+                    <div className="container mx-auto px-4">
+                      <div className="flex justify-center items-center space-x-2 p-2">
+                         <button onClick={() => setCurrentArea('Calculadora')} className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${currentArea === 'Calculadora' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>Calculadora</button>
+                         {isAdmin && <button onClick={() => setCurrentArea('Admin')} className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${currentArea === 'Admin' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>Admin</button>}
+                      </div>
+                    </div>
+                  </nav>
+                <main className="container mx-auto px-4 py-8 sm:py-12 flex-grow">
+                    <div className="max-w-4xl mx-auto">
+                      <style>{`.animate-fade-in { animation: fadeIn 0.7s ease-in-out; } @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+                        {currentArea === 'Calculadora' ? (
+                            <div className="space-y-8">
+                                <ConsultaAssistidaPJE />
+                                <CalculadoraDePrazo />
+                            </div>
+                        ) : (
+                            <AdminPage />
+                        )}
+                    </div>
+                </main>
+            </>
+            )
+        };
 
 
         // --- Componente Principal ---
         const App = () => {
-          const [viewKey, setViewKey] = useState(1);
+          const { user, loading } = useAuth();
+
+          if (loading) {
+            return <div className="min-h-screen flex items-center justify-center"><p>A carregar...</p></div>;
+          }
+
+          const renderContent = () => {
+            if (!user) {
+              return <LoginPage />;
+            }
+            if (!user.emailVerified) {
+              return <VerifyEmailPage />;
+            }
+            return <CalculatorApp />;
+          };
           
           return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-800 dark:to-slate-900 text-slate-800 dark:text-slate-200 flex flex-col">
-              <Header />
-              <main className="container mx-auto px-4 py-8 sm:py-12 flex-grow">
-                <div key={viewKey} className="max-w-4xl mx-auto">
-                  <style>{`.animate-fade-in { animation: fadeIn 0.7s ease-in-out; } @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-                    <div className="space-y-8">
-                        <ConsultaAssistidaPJE />
-                        <CalculadoraDePrazo />
-                    </div>
-                </div>
-              </main>
-              <footer className="text-center py-4">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Desenvolvido por: <strong>Luís Gustavo Arruda Lançoni</strong>, Narley Almeida de Souza e Elvertoni Martelli Coimbra
-                </p>
-              </footer>
+                <Header />
+                {renderContent()}
+                <footer className="text-center py-4">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Desenvolvido por: <strong>Luís Gustavo Arruda Lançoni</strong>, Narley Almeida de Souza e Elvertoni Martelli Coimbra
+                    </p>
+                </footer>
             </div>
           );
         };
         
-        const { useState } = React;
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(
+            <AuthProvider>
+                <App />
+            </AuthProvider>
+        );
     </script>
 </body>
 </html>
