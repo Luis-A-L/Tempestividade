@@ -1,0 +1,5 @@
+{
+  "name": "Calculadora de Prazos TJPR",
+  "description": "Uma aplicação para calcular prazos processuais cíveis e criminais, consultar processos no Diário de Justiça Eletrônico Nacional e gerar minutas para o Tribunal de Justiça do Paraná.",
+  "requestFramePermissions": []
+}
